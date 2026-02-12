@@ -1,0 +1,28 @@
+name: Experiment
+description: Run a small experiment
+title: "[EXP] "
+labels: ["experiment"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What are you testing?
+      placeholder: e.g. try filtering threshold = 0.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why?
+      placeholder: what do you expect to happen
+    validations:
+      required: false
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Result (fill after running)
+      placeholder: write result here then close issue
+    validations:
+      required: false
