@@ -1,0 +1,109 @@
+name: Task / Feature
+description: Plan and track an implementation task or feature.
+title: "[Task]: "
+labels: ["task", "triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for features, refactors, infra work, or documentation tasks.
+        Keep it small and verifiable.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: What kind of work is this?
+      options:
+        - feature
+        - refactor
+        - docs
+        - infra
+        - chore
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Impact/urgency.
+      options:
+        - P0 (blocking)
+        - P1 (important)
+        - P2 (normal)
+        - P3 (optional)
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which module does this affect most?
+      options:
+        - data
+        - training
+        - evaluation
+        - model
+        - infra
+        - docs
+        - paper
+        - other
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What outcome are we trying to achieve (not "what to do")?
+      placeholder: e.g., Reduce training instability by adding gradient clipping and logging.
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background / Context
+      description: Links, prior discussions, papers, notes, constraints.
+      placeholder: Paste links to docs/PRs/issues or describe the context.
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete, testable criteria to close this issue.
+      placeholder: |
+        - [ ] Unit tests added
+        - [ ] Metric X improves by >= Y on dataset Z
+        - [ ] Docs updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Implementation Plan (optional)
+      description: Steps, design sketch, or approach.
+      placeholder: |
+        1) ...
+        2) ...
+        3) ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Dependencies
+      description: What could block this? What depends on this?
+      placeholder: e.g., Needs dataset refresh; blocked by #123.
+    validations:
+      required: false
