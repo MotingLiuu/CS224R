@@ -18,6 +18,9 @@ import numpy as np
 import torch
 from torch import distributions
 
+import logging
+logger = logging.getLogger(__name__)
+
 from cs224r.infrastructure import pytorch_util as ptu
 from cs224r.policies.base_policy import BasePolicy
 
@@ -103,9 +106,18 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             observation = obs
         else:
             observation = obs[None]
+        
+        observation = ptu.from_numpy(observation)
+        mean = self.mean_net(observation)
+        std = torch.exp(self.logstd)
+        dist = torch.distributions.Independent(
+            torch.distributions.Normal(loc=mean, scale=std),
+            1
+        )
+        action = dist.sample()
 
-        # TODO return the action that the policy prescribes
-        raise NotImplementedError
+        return ptu.to_numpy(action)
+
 
     def forward(self, observation: torch.FloatTensor) -> Any:
         """
