@@ -5,6 +5,7 @@ Functions to edit:
     sample_random_data: line 103
 """
 from cs224r.infrastructure.utils import *
+import numpy as np
 
 
 class ReplayBuffer():
@@ -85,6 +86,8 @@ class ReplayBuffer():
                     [self.rews, concatenated_rewards]
                 )[-self.max_size:]
             else:
+                # What does unconcatenated_rewards mean?
+                # If concat_rew is False, we store rewards as a list of arrays(each represents a trajectory)
                 if isinstance(unconcatenated_rewards, list):
                     self.rews += unconcatenated_rewards
                 else:
@@ -127,8 +130,16 @@ class ReplayBuffer():
         ## (i.e., not different indices from each array)
         ## HINT 3: look at the sample_recent_data function below
         ## Note that rews, next_obs, and terminals are not used for BC
+        indices = np.random.permutation(self.obs.shape[0])[:batch_size]
 
-        raise NotImplementedError
+        return (
+            self.obs[indices],
+            self.acs[indices],
+            self.rews[indices],
+            self.next_obs[indices],
+            self.terminals[indices],
+        )
+
     
     def sample_recent_data(self, batch_size=1):
         """
