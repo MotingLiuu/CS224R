@@ -132,8 +132,19 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        
-        raise NotImplementedError
+
+        mean = self.mean_net(observation)
+        std = torch.exp(self.logstd)
+
+        dist = torch.distributions.Independent(
+            torch.distributions.Normal(loc=torch.zeros_like(mean), scale=torch.ones_like(std)),
+            1
+        )
+        sampled_noise = dist.sample()
+        action = mean + sampled_noise * std
+
+        return action
+
 
     def update(self, observations, actions):
         """
