@@ -55,5 +55,26 @@ class TestMLPPolicySL:
         dist = policy.forward(observation_tensor)
 
         logger.debug("Distribution output: %s", dist)
-        
+
         assert isinstance(dist, torch.distributions.Independent), "Expected output to be an Independent distribution"
+
+    def test_update(self):
+        ob_dim = 3
+        ac_dim = 2
+        n_layers = 2
+        size = 16
+
+        policy = MLPPolicySL(
+            ac_dim=ac_dim,
+            ob_dim=ob_dim,
+            n_layers=n_layers,
+            size=size,
+        )
+
+        observations = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        actions = np.array([[0.5, -0.5], [-0.5, 0.5]])
+
+        update_info = policy.update(observations, actions)
+        logger.debug("Update info: %s", update_info)
+
+        assert 'Training Loss' in update_info, "Expected 'Training Loss' key in update info"
