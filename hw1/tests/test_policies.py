@@ -1,4 +1,5 @@
 from cs224r.policies.MLP_policy import MLPPolicySL
+from cs224r.infrastructure import pytorch_util as ptu
 import numpy as np
 import torch
 import torch.nn as nn
@@ -35,3 +36,24 @@ class TestMLPPolicySL:
         assert actions.shape == (2, ac_dim), f"Expected actions shape (2, {ac_dim}), but got {actions.shape}"
 
         logger.debug("Batch observations actions: %s", actions)
+
+    def test_forward(self):
+        ob_dim = 3
+        ac_dim = 2
+        n_layers = 2
+        size = 16
+
+        policy = MLPPolicySL(
+            ac_dim=ac_dim,
+            ob_dim=ob_dim,
+            n_layers=n_layers,
+            size=size,
+        )
+
+        observation = np.array([[1.0, 2.0, 3.0]])
+        observation_tensor = ptu.from_numpy(observation)
+        dist = policy.forward(observation_tensor)
+
+        logger.debug("Distribution output: %s", dist)
+        
+        assert isinstance(dist, torch.distributions.Independent), "Expected output to be an Independent distribution"
