@@ -135,15 +135,13 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
 
         mean = self.mean_net(observation)
         std = torch.exp(self.logstd)
-
+        
         dist = torch.distributions.Independent(
-            torch.distributions.Normal(loc=torch.zeros_like(mean), scale=torch.ones_like(std)),
+            torch.distributions.Normal(loc=mean, scale=std),
             1
         )
-        sampled_noise = dist.sample()
-        action = mean + sampled_noise * std
-
-        return action
+        
+        return dist
 
 
     def update(self, observations, actions):
