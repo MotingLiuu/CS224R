@@ -101,6 +101,7 @@ class BCTrainer:
         self.params['agent_params']['ob_dim'] = ob_dim
 
         # Define the simulation timestep, which will be used for video saving
+        # Confusion: What is This?
         if 'model' in dir(self.env):
             self.fps = 1/self.env.model.opt.timestep
         else:
@@ -204,10 +205,17 @@ class BCTrainer:
         # HINT2: Loading from expert transitions can be done using pickle.load()
         # HINT3: To collect data, you might want to use pre-existing sample_trajectories code from utils
         # HINT4: You want each of these collected rollouts to be of length self.params['ep_len']
-
         print("\nCollecting data to be used for training...")
-        paths, envsteps_this_batch = TODO
-
+        paths, envsteps_this_batch = [], 0
+        
+        if itr == 0 and load_initial_expertdata is not None:
+            with open(load_initial_expertdata, 'rb') as f:
+                paths = pickle.load(f)
+                envsteps_this_batch = sum([len(path["observation"]) for path in paths])
+        else:
+            paths, envsteps_this_batch = utils.sample_trajectories(
+                self.env, collect_policy, self.params["batch_size"], self.params["ep_len"])
+        
         # collect more rollouts with the same policy, to be saved as videos in tensorboard
         # note: here, we collect MAX_NVIDEO rollouts, each of length MAX_VIDEO_LEN
         train_video_paths = None
@@ -230,12 +238,12 @@ class BCTrainer:
             # TODO sample some data from the data buffer
             # HINT1: use the agent's sample function
             # HINT2: how much data = self.params['train_batch_size']
-            ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = TODO
+            ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.agent.sample(self.params['train_batch_size'])
 
             # TODO use the sampled data to train an agent
             # HINT: use the agent's train function
             # HINT: keep the agent's training log for debugging
-            train_log = TODO
+            train_log = self.agent.train(ob_batch, ac_batch)
             all_logs.append(train_log)
         return all_logs
 
@@ -252,8 +260,12 @@ class BCTrainer:
         # TODO relabel collected obsevations (from our policy) with labels from an expert policy
         # HINT: query the policy (using the get_action function) with paths[i]["observation"]
         # and replace paths[i]["action"] with these expert labels
-
-        raise NotImplementedError
+        for path in paths:
+            obs = path["observation"]
+            expert_actions = expert_policy.get_action(obs)
+            path["action"] = expert_actions
+            
+        return paths
 
     ####################################
     ####################################
