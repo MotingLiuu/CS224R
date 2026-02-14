@@ -155,7 +155,16 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         """
         # TODO: update the policy and return the loss. Recall that to update the policy
         # you need to backpropagate the gradient and step the optimizer.
-        loss = TODO
+        observations_tensor = ptu.from_numpy(observations)
+        actions_tensor = ptu.from_numpy(actions)
+
+        dist = self.forward(observations_tensor)
+        log_probs = dist.log_prob(actions_tensor)
+        loss = -log_probs.mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
         return {
             'Training Loss': ptu.to_numpy(loss),
