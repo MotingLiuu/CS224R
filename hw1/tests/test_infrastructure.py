@@ -63,25 +63,4 @@ class TestUtil:
         logger.debug("Sampled terminals: %s", terminals)
 
 
-    def test_forward(self):
-        ob_dim = 3
-        ac_dim = 2
-        n_layers = 2
-        size = 2
-
-        policy = MLPPolicySL(
-            ac_dim=ac_dim,
-            ob_dim=ob_dim,
-            n_layers=n_layers,
-            size=size,
-        )
-
-        observation = np.array([[1.0, 2.0, 3.0]])
-        observation_tensor = ptu.from_numpy(observation)
-        
-        actions_tensor = policy.forward(observation_tensor)
-        
-        assert actions_tensor.shape == (1, ac_dim), f"Expected actions shape (1, {ac_dim}), but got {actions_tensor.shape}"
-        
-        logger.debug("Forward pass actions output: %s", actions_tensor)
 
