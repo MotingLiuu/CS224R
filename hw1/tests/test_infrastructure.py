@@ -3,6 +3,8 @@ from cs224r.infrastructure.pytorch_util import MLP
 from cs224r.infrastructure.replay_buffer import ReplayBuffer
 from cs224r.policies.MLP_policy import MLPPolicySL
 from cs224r.infrastructure import pytorch_util as ptu
+from cs224r.infrastructure.utils import *
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import logging
@@ -62,5 +64,21 @@ class TestUtil:
         logger.debug("Sampled next observations: %s", next_obs)
         logger.debug("Sampled terminals: %s", terminals)
 
+    
+    def test_sample_trajectory(self):
+
+        class DummyPolicy:
+            def get_action(self, obs):
+                return np.array([0, 1]) 
+        policy = DummyPolicy()
+
+        env = gym.make('CartPole-v1')
+        max_path_length = 10
+        render = False
+        
+        path = sample_trajectory(env, policy, max_path_length, render)
+        
+        logger.debug("Sampled trajectory path:\n%s", path)
+        
 
 
