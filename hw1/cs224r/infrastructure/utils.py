@@ -7,6 +7,7 @@ Functions to edit:
     3. sample_n_trajectories (line 83)
 """
 import numpy as np
+from cs224r.infrastructure import pytorch_util as ptu
 import time
 
 ############################################
@@ -25,7 +26,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
     :render: whether to save images from the rollout
     """
     # Initialize environment for the beginning of a new rollout
-    ob = env.reset()[0] # HINT: should be the output of resetting the env
+    ob = env.reset() # HINT: should be the output of resetting the env
 
     # Initialize data storage for across the trajectory
     # You'll mainly be concerned with: obs (list of observations), acs (list of actions)
