@@ -16,7 +16,6 @@ for _ in range(1000):
     frame = env.render()
     plt.imshow(frame)
     plt.axis('off')
-    plt.pause(0.02) 
     plt.clf()
 
     action = env.action_space.sample()
