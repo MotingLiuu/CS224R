@@ -40,7 +40,6 @@ class LunarLanderAgent:
         self.lr = learning_rate
         self.discount_factor = discount_factor
         self.q_net = QNet(input_d=12, hidden_d=8, n_hidden_layer=2)
-        self.actions_onehot = []   
         self.actions_onehot = np.eye(4)
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.training_error = []
@@ -143,6 +142,7 @@ class LunarLanderAgent:
 
 
 if __name__ == "__main__":
+    import wandb
     import logging
     logging.basicConfig(
         level=logging.INFO,
@@ -150,10 +150,28 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
     
-    n_episode = 500
-    learning_rate = 0.1
+    config = {
+        "learning_rate": 1e-3,
+        "n_episode": 2000,
+        "discount_factor": 0.99,
+        "sample_method": "boltzmann",
+    }
+
+    if config["sample_method"] == "boltzmann":
+        run_name = config["sample_method"] + datetime.now().strftime("_%Y%m%d_%H%M%S")
+    else:
+        run_name = datetime.now().strftime("LunarLander_%Y%m%d_%H%M%S")
+    wandb.init(
+        project="gymrl",
+        name=run_name,
+        config=config,
+    )
+    
+    n_episode = config["n_episode"]
+    learning_rate = config["learning_rate"]
+
     checkpoint_dir = Path("checkpoints")
-    checkpoint_path = checkpoint_dir / "lunar_lander_agent_500.pt"
+    checkpoint_path = checkpoint_dir / f"{config["sample_method"]}_{config["n_episode"]}.pt"
 
     env = gym.make("LunarLander-v3", continuous=False, gravity=-10.0, enable_wind=False, wind_power=15.0, turbulence_power=1.5)
 
@@ -177,6 +195,12 @@ if __name__ == "__main__":
         logger.info(f"Episode {episode} finished! Total reward: {episode_reward}")
         episode_td_errors = agent.training_error[td_error_start_idx:]
         mean_td_error = float(np.mean(episode_td_errors)) if episode_over else 0.0
+    
+        wandb.log({
+            "train/episode_reward": episode_reward,
+            "train/mean_td_error": mean_td_error,
+            "episode": episode,
+        })
 
     saved_path = agent.save(checkpoint_path)
     logger.info(f"Checkpoint saved to: {saved_path}")
