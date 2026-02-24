@@ -39,7 +39,9 @@ class LunarLanderAgent:
         self.env = env 
         self.lr = learning_rate
         self.discount_factor = discount_factor
-        self.q_net = QNet(input_d=12, hidden_d=8, n_hidden_layer=2)
+        self.q_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2)
+        self.target_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2)
+        self.target_net.load_state_dict(self.q_net.state_dict())
         self.actions_onehot = np.eye(4)
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.training_error = []
@@ -77,7 +79,7 @@ class LunarLanderAgent:
         next_obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32)
         next_action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32)
         next_input_tensor = torch.stack([torch.cat([next_obs_tensor, action]) for action in next_action_tensor])
-        future_q_value = (not terminated) * self.discount_factor * (torch.max(self.q_net(next_input_tensor).detach()))
+        future_q_value = (not terminated) * self.discount_factor * (torch.max(self.target_net(next_input_tensor).detach()))
         target = reward + future_q_value
 
         obs_tensor, action_tensor = torch.as_tensor(obs, dtype=torch.float32), torch.as_tensor(self.actions_onehot[action],dtype=torch.float32)
@@ -87,6 +89,13 @@ class LunarLanderAgent:
         loss.backward()
         self.optimizer.step()
         self.training_error.append(loss.detach().numpy())
+    
+    def update_target_hard(self):
+        self.target_net.load_state_dict(self.q_net.state_dict())
+    
+    def update_target_soft(self, tau: float):
+        for target_param, local_param in zip(self.target_net.parameters(), self.q_net.parameters()):
+            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
     def save(self, checkpoint_path: Union[str, Path]) -> Path:
         checkpoint_path = Path(checkpoint_path)
@@ -155,6 +164,9 @@ if __name__ == "__main__":
         "n_episode": 2000,
         "discount_factor": 0.99,
         "sample_method": "boltzmann",
+        "target_update_method": "soft",
+        "target_update_step": 500,
+        "target_update_tau": 5e-3,
     }
 
     if config["sample_method"] == "boltzmann":
@@ -169,7 +181,11 @@ if __name__ == "__main__":
     
     n_episode = config["n_episode"]
     learning_rate = config["learning_rate"]
-
+    if config["target_update_method"] == "hard":
+        target_update_step = config["target_update_step"]
+    else:
+        target_update_tau = config["target_update_tau"]
+    total_step = 0
     checkpoint_dir = Path("checkpoints")
     checkpoint_path = checkpoint_dir / f"{config["sample_method"]}_{config["n_episode"]}.pt"
 
@@ -187,7 +203,13 @@ if __name__ == "__main__":
             action = agent.get_action_boltzmann(obs)
             next_obs, reward, terminated, truncated, info = env.step(action)
             agent.update_q_value(obs, action, float(reward), terminated, next_obs)
-            
+            if config["target_update_method"] == "hard":
+                if total_step % target_update_step == 0:
+                    agent.update_target_hard()
+            else:
+                agent.update_target_soft(target_update_tau)
+            total_step += 1
+                
             obs = next_obs
             episode_over = terminated or truncated
             episode_reward += float(reward)

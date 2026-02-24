@@ -10,10 +10,10 @@ logging.basicConfig(
     )
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_PATH = Path(__file__).parent / "checkpoints" / "lunar_lander_agent_500.pt"
-n_episode = 1000
+CHECKPOINT_PATH = Path(__file__).parent / "checkpoints" / "boltzmann_2000.pt"
+n_episode = 10
 
-env = gym.make("LunarLander-v3")
+env = gym.make("LunarLander-v3", render_mode="human")
 agent = LunarLanderAgent.load(env, CHECKPOINT_PATH)
 reward_history = []
 
@@ -33,6 +33,7 @@ for episode in range(n_episode):
 
     logger.debug(f"Episode {episode + 1} finished! Total reward: {total_reward}")
     reward_history.append(total_reward)
+    time.sleep(0.1)
 
 logger.info(f"Average reward over {n_episode} episodes: {sum(reward_history) / n_episode}")
 
