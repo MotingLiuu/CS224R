@@ -10,7 +10,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create our training environment - a cart with a pole that needs balancing
-env = gym.make("Blackjack-v1", render_mode="human")
+env = gym.make("LunarLander-v3", render_mode="human")
 
 logger.info(f"Action space: {env.action_space}")
 logger.info(f"Sample action: {env.action_space.sample()}")
@@ -33,7 +33,7 @@ total_reward = 0
 while not episode_over:
     # Choose an action: 0 = push cart left, 1 = push cart right
     action = env.action_space.sample()  # Random action for now - real agents will be smarter!
-    time.sleep(10)  # Slow down the loop so we can see what's happening
+    time.sleep(0.05)  # Slow down the loop so we can see what's happening
     # Take the action and see what happens
     observation, reward, terminated, truncated, info = env.step(action)
 
