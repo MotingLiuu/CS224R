@@ -9,7 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
+from gymnasium import spaces
 from einops import rearrange, reduce, repeat
+
 
 class QNet(nn.Module):
     def __init__(
@@ -32,32 +34,34 @@ class QNet(nn.Module):
 class LunarLanderAgent:
     def __init__(
         self,
+        device: torch.device,
         env: gym.Env,
         learning_rate: float,
         discount_factor: float = 0.95,
     ):
+        self.device = device
         self.env = env 
         self.lr = learning_rate
         self.discount_factor = discount_factor
-        self.q_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2)
-        self.target_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2)
+        self.q_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2).to(self.device)
+        self.target_net = QNet(input_d=12, hidden_d=32, n_hidden_layer=2).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
-        self.actions_onehot = np.eye(4)
+        self.actions_onehot = torch.eye(4).to(self.device)
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.training_error = []
 
     def get_action_test(self, obs: tuple) -> int:
-        obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
-        action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32)
+        obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32, device=self.device)
         input_tensor = torch.stack([torch.cat([obs_tensor, action]) for action in action_tensor])
         action_values_tensor = self.q_net(input_tensor)
         action_values_tensor = rearrange(action_values_tensor, "b d -> (b d)")
-        action = int(torch.argmax(action_values_tensor))
+        action = int(torch.argmax(action_values_tensor).item())
         return action
 
     def get_action_boltzmann(self, obs: tuple) -> int:
-        obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
-        action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32)
+        obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32, device=self.device)
         input_tensor = torch.stack([torch.cat([obs_tensor, action]) for action in action_tensor])
         action_values_tensor = self.q_net(input_tensor)
         action_values_tensor = rearrange(action_values_tensor, "b d -> (b d)")
@@ -65,7 +69,7 @@ class LunarLanderAgent:
         action_probs = exp_tensor / torch.sum(exp_tensor)
         action_dist = Categorical(action_probs)
         action_tensor = action_dist.sample()
-        action = int(action_tensor)
+        action = int(action_tensor.item())
         return action
 
     def update_q_value(
@@ -76,19 +80,19 @@ class LunarLanderAgent:
         terminated: bool,
         next_obs: tuple,
     ):
-        next_obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32)
-        next_action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32)
+        next_obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
+        next_action_tensor = torch.as_tensor(self.actions_onehot, dtype=torch.float32, device=self.device)
         next_input_tensor = torch.stack([torch.cat([next_obs_tensor, action]) for action in next_action_tensor])
         future_q_value = (not terminated) * self.discount_factor * (torch.max(self.target_net(next_input_tensor).detach()))
         target = reward + future_q_value
 
-        obs_tensor, action_tensor = torch.as_tensor(obs, dtype=torch.float32), torch.as_tensor(self.actions_onehot[action],dtype=torch.float32)
+        obs_tensor, action_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device), torch.as_tensor(self.actions_onehot[action],dtype=torch.float32, device=self.device)
         input_tensor = torch.cat([obs_tensor, action_tensor])
         loss = F.mse_loss(self.q_net(input_tensor), torch.as_tensor(target))
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        self.training_error.append(loss.detach().numpy())
+        self.training_error.append(loss.detach().cpu().numpy())
     
     def update_target_hard(self):
         self.target_net.load_state_dict(self.q_net.state_dict())
@@ -179,6 +183,8 @@ if __name__ == "__main__":
         config=config,
     )
     
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    
     n_episode = config["n_episode"]
     learning_rate = config["learning_rate"]
     if config["target_update_method"] == "hard":
@@ -191,7 +197,7 @@ if __name__ == "__main__":
 
     env = gym.make("LunarLander-v3", continuous=False, gravity=-10.0, enable_wind=False, wind_power=15.0, turbulence_power=1.5)
 
-    agent = LunarLanderAgent(env=env, learning_rate=learning_rate)
+    agent = LunarLanderAgent(env=env, learning_rate=learning_rate, device=device)
     
     for episode in range(n_episode):
         obs, info = env.reset()
