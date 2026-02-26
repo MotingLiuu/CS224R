@@ -255,7 +255,7 @@ if __name__ == "__main__":
         "decay_steps": 25000,
         "sample_method": "boltzmann",
         "target_update_method": "soft",
-        "target_update_step": 100,
+        "target_update_step": 50,
         "target_update_tau": 5e-3,
         "double_dqn": True,
     }
