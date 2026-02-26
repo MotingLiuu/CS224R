@@ -100,6 +100,7 @@ class LunarLanderAgent:
         min_epsilon: float,
         decay_steps: float,
         discount_factor: float = 0.99,
+        double_dqn: bool = False,
     ):
         self.device = device
         self.lr = learning_rate
@@ -107,6 +108,8 @@ class LunarLanderAgent:
         self.min_epsilon = min_epsilon
         self.decay_steps = decay_steps
         self.discount_factor = discount_factor
+        self.double_dqn = double_dqn
+
         self.q_net = QNet(n_features=8, hidden_d=128, n_actions=4, n_hidden_layers=2).to(self.device)
         self.target_net = QNet(n_features=8, hidden_d=128, n_actions=4, n_hidden_layers=2).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
@@ -154,7 +157,12 @@ class LunarLanderAgent:
         obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         next_obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
         actions_tensor = torch.as_tensor(actions, dtype=torch.int, device=self.device)
-        future_q_value = torch.as_tensor((1.0 - done) * self.discount_factor, dtype=torch.float32, device=self.device) * (torch.max(self.target_net(next_obs_tensor).detach(), -1).values)
+        if not self.double_dqn:
+            future_q_value = torch.as_tensor((1.0 - done) * self.discount_factor, dtype=torch.float32, device=self.device) * (torch.max(self.target_net(next_obs_tensor).detach(), -1).values)
+        else:
+            with torch.no_grad():
+                next_actions = torch.argmax(self.q_net(next_obs_tensor), dim=-1)
+            future_q_value = torch.as_tensor((1.0 - done) * self.discount_factor, dtype=torch.float32, device=self.device) * (self.target_net(next_obs_tensor).gather(dim=-1, index=rearrange(next_actions, "b -> b 1")).squeeze(-1)).detach()
         target = torch.as_tensor(rewards, dtype=torch.float32, device=self.device) + future_q_value
 
         loss = F.mse_loss(self.q_net(obs_tensor).gather(dim=1, index=rearrange(actions_tensor, "b -> b 1")).squeeze(-1), torch.as_tensor(target))
@@ -182,6 +190,7 @@ class LunarLanderAgent:
                 "epsilon": self.epsilon,
                 "min_epsilon": self.min_epsilon,
                 "decay_steps": self.decay_steps,
+                "double_dqn": self.double_dqn,
             },
             "qnet_hparams": {
                 "n_features": self.q_net.n_features,
@@ -212,6 +221,7 @@ class LunarLanderAgent:
             min_epsilon=agent_hparams["min_epsilon"],
             decay_steps=agent_hparams["decay_steps"],
             discount_factor=agent_hparams["discount_factor"],
+            double_dqn=agent_hparams["double_dqn"],
         )
 
         agent.q_net.load_state_dict(checkpoint["q_net_state_dict"])
@@ -238,19 +248,20 @@ if __name__ == "__main__":
         "learning_rate": 5e-4,
         "n_update_steps": 50000,
         "batch_size": 128,
-        "buffer_size": 1000,
+        "buffer_size": 10000,
         "discount_factor": 0.99,
         "epsilon": 1.0,
         "min_epsilon": 0.05,
         "decay_steps": 25000,
         "sample_method": "boltzmann",
         "target_update_method": "soft",
-        "target_update_step": 50,
+        "target_update_step": 100,
         "target_update_tau": 5e-3,
+        "double_dqn": True,
     }
 
-    if config["sample_method"] == "boltzmann":
-        run_name = config["sample_method"] + datetime.now().strftime("_%Y%m%d_%H%M%S")
+    if config["double_dqn"]:
+        run_name = "double_dqn" + datetime.now().strftime("_%Y%m%d_%H%M%S")
     else:
         run_name = datetime.now().strftime("LunarLander_%Y%m%d_%H%M%S")
     wandb.init(
@@ -273,12 +284,13 @@ if __name__ == "__main__":
     decay_steps = config["decay_steps"]
     sample_method = config["sample_method"]
     target_update_method = config["target_update_method"]
+    double_dqn = config["double_dqn"]
     if config["target_update_method"] == "hard":
         target_update_step = config["target_update_step"]
     else:
         target_update_tau = config["target_update_tau"]
     checkpoint_dir = Path("checkpoints")
-    checkpoint_path = checkpoint_dir / f"{config['sample_method']}_{config['n_update_steps']}.pt"
+    checkpoint_path = checkpoint_dir / (f"double_dqn_{config['n_update_steps']}.pt" if double_dqn else f"{config['n_update_steps']}.pt")
 
     envs = gym.vector.SyncVectorEnv(
         [
@@ -305,7 +317,7 @@ if __name__ == "__main__":
         ]
     )
     envs_wrapper = gym.wrappers.vector.RecordEpisodeStatistics(envs)
-    agent = LunarLanderAgent(learning_rate=learning_rate, device=torch.device("mps"), discount_factor=discount_factor, epsilon=epsilon, min_epsilon=min_epsilon, decay_steps=decay_steps)
+    agent = LunarLanderAgent(learning_rate=learning_rate, device=torch.device("mps"), discount_factor=discount_factor, epsilon=epsilon, min_epsilon=min_epsilon, decay_steps=decay_steps, double_dqn=double_dqn)
     replaybuffer = ReplayBuffer(buffer_size=buffer_size, observation_dim=8, action_dim=1, n_envs=10)
     
     obs, infos = envs_wrapper.reset() 
