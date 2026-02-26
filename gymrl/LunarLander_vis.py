@@ -3,6 +3,7 @@ import gymnasium as gym
 import time
 import logging
 from pathlib import Path
+import torch
 
 logging.basicConfig(
         level=logging.INFO,
@@ -10,11 +11,11 @@ logging.basicConfig(
     )
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_PATH = Path(__file__).parent / "checkpoints" / "boltzmann_2000.pt"
+CHECKPOINT_PATH = Path(__file__).parent / "checkpoints" / "boltzmann_1000.pt"
 n_episode = 10
 
 env = gym.make("LunarLander-v3", render_mode="human")
-agent = LunarLanderAgent.load(env, CHECKPOINT_PATH)
+agent = LunarLanderAgent.load(torch.device("cpu"), env, CHECKPOINT_PATH)
 reward_history = []
 
 for episode in range(n_episode):
