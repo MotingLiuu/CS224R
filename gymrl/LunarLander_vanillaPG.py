@@ -176,7 +176,7 @@ if __name__ == "__main__":
         device=device,
         discount_factor=config["discount_factor"], 
         actor_lr=config["actor_lr"],
-        in_features=config["in_featues"],
+        in_features=config["in_features"],
         out_features=config["out_features"],
         hidden_features=config["hidden_features"],
         n_hidden_layers=config["n_hidden_layers"],
