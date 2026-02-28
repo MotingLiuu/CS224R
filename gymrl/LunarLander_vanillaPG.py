@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Union
 import gymnasium as gym
 import numpy as np
 import torch
@@ -71,6 +72,45 @@ class Agent():
 
         return actions_log_probs_tensor
 
+    def save_agent(self, checkpoint_path: Union[str, Path]) -> Path:
+        checkpoint_path = Path(checkpoint_path)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        checkpoint = {
+            "agent_hparams": {
+                "device": self.device,
+                "discount_factor": self.discount_factor,
+                "actor_lr": self.actor_lr,
+                "in_features": self.in_features,
+                "out_features": self.out_features,
+                "hidden_features": self.hidden_features,
+                "n_hidden_layers": self.n_hidden_layers,
+            },
+            "actor_state_dict": self.actor.state_dict(),
+            "actor_optim_state_dict": self.actor_optim.state_dict(),
+        }
+        torch.save(checkpoint, checkpoint_path)
+        return checkpoint_path
+
+        @classmethod
+        def load(cls, device: torch.device, env: gym.Env, checkpoint_path: Union[str, Path]):
+            checkpoint_path = Path(checkpoint_path)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            agent_hparams = checkpoint["agent_hparams"]
+            agent = cls(
+                device=device,
+                discount_factor=agent_hparams["discount_factor"],
+                actor_lr=agent_hparams["actor_lr"],
+                in_features=agent_hparams["in_features"],
+                out_features=agent_hparams["out_features"],
+                hidden_features=agent_hparams["hidden_features"],
+                n_hidden_layers=agent_hparams["n_hidden_layers"],
+            )
+            agent.actor.load_state_dict(checkpoint["actor_state_dict"])
+            agent.actor_optim.load_state_dict(checkpoint["actor_optim_state_dict"])
+
+            return agent
+
     
 if __name__ == "__main__":
     import logging
@@ -97,7 +137,7 @@ if __name__ == "__main__":
         "device": "mps",
     }
 
-    run_name = "VanillaPG" + datetime.now().strftime("_%Y%m%d_%H%M%S")
+    run_name = "VanillaPG" + datetime.now().strftime("_%Y%m%d_%H%M%S") + f"_env{config['n_envs']}_batch{config['batch_size']}_hidden{config['hidden_features']}x{config['n_hidden_layers']}_actorlr{config['actor_lr']}"
     wandb.init(
         project="gymrl",
         name=run_name,
@@ -186,3 +226,11 @@ if __name__ == "__main__":
             batch_actions_log_probs = agent.get_log_prob(obs=batch_obs_array, actions=batch_actions_array)
             loss = agent.get_vanilla_loss(actions_log_probs=batch_actions_log_probs, rewards=batch_rewards_array, masks=batch_done_array)
             agent.update_actor(loss)
+
+            logging.info(f"Step {step + 1} | Loss: {loss.item()}")
+            wandb.log(
+                {
+                    "train/loss": loss.item(),
+                }
+            )
+    agent.save_agent(checkpoint_path=Path(__file__).parent / "checkpoints" / f"vanilla_pg_{run_name}.pt")
