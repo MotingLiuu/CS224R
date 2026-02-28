@@ -37,14 +37,13 @@ class Agent():
 
     def get_vanilla_loss(self, actions_log_probs: torch.Tensor, rewards: np.ndarray, masks: np.ndarray) -> torch.Tensor:
         n_steps = rewards.shape[-1]
-        n_episodes = np.sum(masks) + masks.shape[0]
         advantages = np.zeros_like(rewards)
         for index in range(n_steps-1, -1, -1):
             if index == n_steps - 1:
                 advantages[...,index] = rewards[...,index]
             else:
                 advantages[...,index] = rewards[...,index] + (1 - masks[...,index]) * advantages[...,index+1] * self.discount_factor
-        loss = -torch.sum(actions_log_probs * torch.as_tensor(advantages, dtype=torch.float32, device=self.device)) / n_episodes
+        loss = -torch.mean(actions_log_probs * torch.as_tensor(advantages, dtype=torch.float32, device=self.device))
         
         return loss
     
@@ -92,24 +91,24 @@ class Agent():
         torch.save(checkpoint, checkpoint_path)
         return checkpoint_path
 
-        @classmethod
-        def load(cls, device: torch.device, env: gym.Env, checkpoint_path: Union[str, Path]):
-            checkpoint_path = Path(checkpoint_path)
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            agent_hparams = checkpoint["agent_hparams"]
-            agent = cls(
-                device=device,
-                discount_factor=agent_hparams["discount_factor"],
-                actor_lr=agent_hparams["actor_lr"],
-                in_features=agent_hparams["in_features"],
-                out_features=agent_hparams["out_features"],
-                hidden_features=agent_hparams["hidden_features"],
-                n_hidden_layers=agent_hparams["n_hidden_layers"],
-            )
-            agent.actor.load_state_dict(checkpoint["actor_state_dict"])
-            agent.actor_optim.load_state_dict(checkpoint["actor_optim_state_dict"])
+    @classmethod
+    def load(cls, device: torch.device, env: gym.Env, checkpoint_path: Union[str, Path]):
+        checkpoint_path = Path(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        agent_hparams = checkpoint["agent_hparams"]
+        agent = cls(
+            device=device,
+            discount_factor=agent_hparams["discount_factor"],
+            actor_lr=agent_hparams["actor_lr"],
+            in_features=agent_hparams["in_features"],
+            out_features=agent_hparams["out_features"],
+            hidden_features=agent_hparams["hidden_features"],
+            n_hidden_layers=agent_hparams["n_hidden_layers"],
+        )
+        agent.actor.load_state_dict(checkpoint["actor_state_dict"])
+        agent.actor_optim.load_state_dict(checkpoint["actor_optim_state_dict"])
 
-            return agent
+        return agent
 
     
 if __name__ == "__main__":
@@ -126,9 +125,9 @@ if __name__ == "__main__":
     
     config = {
         "n_envs": 2,
-        "n_update_steps": 50,
+        "n_update_steps": 1000,
         "batch_size": 10,
-        "in_featues": 8,
+        "in_features": 8,
         "out_features": 4,
         "hidden_features": 16,
         "n_hidden_layers": 2,
@@ -137,7 +136,7 @@ if __name__ == "__main__":
         "device": "mps",
     }
 
-    run_name = "VanillaPG" + datetime.now().strftime("_%Y%m%d_%H%M%S") + f"_env{config['n_envs']}_batch{config['batch_size']}_hidden{config['hidden_features']}x{config['n_hidden_layers']}_actorlr{config['actor_lr']}"
+    run_name = "VanillaPG" + datetime.now().strftime("_%Y%m%d_%H%M%S") + f"_env{config['n_envs']}_batch{config['batch_size']}_hidden{config['hidden_features']}x{config['n_hidden_layers']}_actorlr{config['actor_lr']}_update_steps{config['n_update_steps']}"
     wandb.init(
         project="gymrl",
         name=run_name,
@@ -190,8 +189,8 @@ if __name__ == "__main__":
             batch_obs_list, batch_actions_list, batch_rewards_list = [], [], []
             batch_done_list = []
             cur_episodes = 0
-            while cur_episodes < batch_size:
-                obs_list, actions_list, rewards_list = [[] for _ in range(n_envs)], [[] for _ in range(n_envs)], [[] for _ in range(n_envs)]
+            obs_list, actions_list, rewards_list = [[] for _ in range(n_envs)], [[] for _ in range(n_envs)], [[] for _ in range(n_envs)]
+            while cur_episodes < batch_size: 
                 actions = agent.get_actions(obs=obs)
                 next_obs, rewards, termindated, truncated, infos = envs_wrapper.step(actions=actions)
                 for i in range(n_envs):
@@ -205,7 +204,7 @@ if __name__ == "__main__":
                             episode_length = infos["episode"]["l"][i]
                             
                             logging.info(f"episode reward: {episode_reward}")
-                            logging.info(f"episode length: {episode_reward}")
+                            logging.info(f"episode length: {episode_length}")
 
                             wandb.log(
                                 {
@@ -217,10 +216,11 @@ if __name__ == "__main__":
                             batch_obs_list.extend(obs_list[i])
                             batch_actions_list.extend(actions_list[i])
                             batch_rewards_list.extend(rewards_list[i])
-                            batch_done_list.extend([0 for _ in range(len(batch_obs_list))])
-                            batch_done_list[-1] = 1
+                            batch_done_list.extend([0 for _ in range(len(obs_list[i]) - 1)] + [1])
                             cur_episodes += 1
 
+                            obs_list[i], actions_list[i], rewards_list[i] = [], [], []
+                obs = next_obs
 
             batch_obs_array, batch_actions_array, batch_rewards_array, batch_done_array = np.array(batch_obs_list), np.array(batch_actions_list), np.array(batch_rewards_list), np.array(batch_done_list)
             batch_actions_log_probs = agent.get_log_prob(obs=batch_obs_array, actions=batch_actions_array)
