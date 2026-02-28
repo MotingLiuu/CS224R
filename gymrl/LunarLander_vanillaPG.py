@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 from einops import rearrange, reduce, repeat
 
-class Agent():
+class AgentVanillaPG():
     def __init__(
         self,
         device: torch.device,
@@ -43,6 +43,7 @@ class Agent():
                 advantages[...,index] = rewards[...,index]
             else:
                 advantages[...,index] = rewards[...,index] + (1 - masks[...,index]) * advantages[...,index+1] * self.discount_factor
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  
         loss = -torch.mean(actions_log_probs * torch.as_tensor(advantages, dtype=torch.float32, device=self.device))
         
         return loss
@@ -51,6 +52,15 @@ class Agent():
         self.actor_optim.zero_grad()
         loss.backward()
         self.actor_optim.step()
+    
+    def get_action_test(self, obs: np.ndarray) -> np.ndarray:
+        obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            actions_logits_tensor = self.actor(obs_tensor)
+        action = torch.argmax(actions_logits_tensor, dim=-1)
+        action = action.cpu().numpy()
+
+        return action
 
     def get_actions(self, obs: np.ndarray) -> np.ndarray:
         obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
@@ -113,7 +123,7 @@ class Agent():
     
 if __name__ == "__main__":
     import logging
-    import tqdm
+    from tqdm import tqdm
     from tqdm.contrib.logging import logging_redirect_tqdm
     logging.basicConfig(
         level=logging.INFO,
@@ -124,16 +134,16 @@ if __name__ == "__main__":
     import wandb
     
     config = {
-        "n_envs": 2,
-        "n_update_steps": 1000,
-        "batch_size": 10,
+        "n_envs": 4,
+        "n_update_steps": 500,
+        "batch_size": 20,
         "in_features": 8,
         "out_features": 4,
-        "hidden_features": 16,
+        "hidden_features": 128,
         "n_hidden_layers": 2,
         "actor_lr": 1e-3,
         "discount_factor": 0.99,
-        "device": "mps",
+        "device": "cpu",
     }
 
     run_name = "VanillaPG" + datetime.now().strftime("_%Y%m%d_%H%M%S") + f"_env{config['n_envs']}_batch{config['batch_size']}_hidden{config['hidden_features']}x{config['n_hidden_layers']}_actorlr{config['actor_lr']}_update_steps{config['n_update_steps']}"
@@ -172,7 +182,7 @@ if __name__ == "__main__":
     batch_size = config["batch_size"]
 
     envs_wrapper = gym.wrappers.vector.RecordEpisodeStatistics(envs)
-    agent = Agent(
+    agent = AgentVanillaPG(
         device=device,
         discount_factor=config["discount_factor"], 
         actor_lr=config["actor_lr"],
@@ -181,25 +191,33 @@ if __name__ == "__main__":
         hidden_features=config["hidden_features"],
         n_hidden_layers=config["n_hidden_layers"],
     )
-    
-    obs, info = envs.reset()
+
+    scheduler = optim.lr_scheduler.LinearLR(
+        optimizer=agent.actor_optim,
+        start_factor=1.0,
+        end_factor=0.0,
+        total_iters=config["n_update_steps"],
+    )
     
     with logging_redirect_tqdm():
-        for step in range(config["n_update_steps"]):
+        for step in tqdm(range(config["n_update_steps"])):
+            obs, info = envs_wrapper.reset()
             batch_obs_list, batch_actions_list, batch_rewards_list = [], [], []
             batch_done_list = []
-            cur_episodes = 0
             obs_list, actions_list, rewards_list = [[] for _ in range(n_envs)], [[] for _ in range(n_envs)], [[] for _ in range(n_envs)]
-            while cur_episodes < batch_size: 
+            done_list = [batch_size // n_envs for _ in range(n_envs)]
+            while not all(done == 0 for done in done_list):
                 actions = agent.get_actions(obs=obs)
-                next_obs, rewards, termindated, truncated, infos = envs_wrapper.step(actions=actions)
+                next_obs, rewards, terminated, truncated, infos = envs_wrapper.step(actions=actions)
                 for i in range(n_envs):
-                    obs_list[i].append(obs[i])
-                    actions_list[i].append(actions[i])
-                    rewards_list[i].append(rewards[i])
+                    if done_list[i] > 0:
+                        obs_list[i].append(obs[i])
+                        actions_list[i].append(actions[i])
+                        rewards_list[i].append(rewards[i])
                 if "episode" in infos:
                     for i in range(len(infos["_episode"])):
-                        if infos["_episode"][i]:
+                        if infos["_episode"][i] and done_list[i] > 0:
+                            done_list[i] -= 1
                             episode_reward = infos["episode"]["r"][i]
                             episode_length = infos["episode"]["l"][i]
                             
@@ -217,7 +235,6 @@ if __name__ == "__main__":
                             batch_actions_list.extend(actions_list[i])
                             batch_rewards_list.extend(rewards_list[i])
                             batch_done_list.extend([0 for _ in range(len(obs_list[i]) - 1)] + [1])
-                            cur_episodes += 1
 
                             obs_list[i], actions_list[i], rewards_list[i] = [], [], []
                 obs = next_obs
@@ -226,6 +243,7 @@ if __name__ == "__main__":
             batch_actions_log_probs = agent.get_log_prob(obs=batch_obs_array, actions=batch_actions_array)
             loss = agent.get_vanilla_loss(actions_log_probs=batch_actions_log_probs, rewards=batch_rewards_array, masks=batch_done_array)
             agent.update_actor(loss)
+            scheduler.step()
 
             logging.info(f"Step {step + 1} | Loss: {loss.item()}")
             wandb.log(
